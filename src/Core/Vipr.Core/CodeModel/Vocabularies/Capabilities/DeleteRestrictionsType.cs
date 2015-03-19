@@ -6,37 +6,35 @@ using System.Threading.Tasks;
 
 namespace Vipr.Core.CodeModel.Vocabularies.Capabilities
 {
-    /*      <Term Name="DeleteRestrictions" Type="Capabilities.DeleteRestrictionsType" AppliesTo="EntitySet">
-        <Annotation Term="Core.Description" String="Restrictions on delete operations" />
-      </Term>
-      <ComplexType Name="DeleteRestrictionsType">
-        <Property Name="Deletable" Type="Edm.Boolean" DefaultValue="true">
-          <Annotation Term="Core.Description" String="Entities can be deleted" />
-        </Property>
-        <Property Name="NonDeletableNavigationProperties" Type="Collection(Edm.NavigationPropertyPath)">
-          <Annotation Term="Core.Description" String="These navigation properties do not allow DeleteLink requests" />
-        </Property>
-      </ComplexType>
-*/
+    public abstract class OdcmCapability : IEquatable<OdcmCapability>
+    {
+        public abstract bool Equals(OdcmCapability otherCapability);
+    }
+
     /// <summary>
     /// Restrictions on delete operations
     /// </summary>
-    public class DeleteRestrictionsType
+    public class OdcmDeleteCapability : OdcmCapability
     {
         /// <summary>
         /// Entities can be deleted
         /// </summary>
         public bool Deletable { get; set; }
 
-        /// <summary>
-        /// These navigation properties do not allow DeleteLink requests
-        /// </summary>
-        public List<string> NonDeletableNavigationProperties { get; set; }
-
-        public DeleteRestrictionsType()
+        public OdcmDeleteCapability()
         {
             Deletable = true;
-            NonDeletableNavigationProperties = new List<string>();
+        }
+
+        public override bool Equals(OdcmCapability otherCapability)
+        {
+            var other = otherCapability as OdcmDeleteCapability;
+            if(other == null)
+            {
+                return false;
+            }
+
+            return Deletable == other.Deletable;
         }
     }
 }

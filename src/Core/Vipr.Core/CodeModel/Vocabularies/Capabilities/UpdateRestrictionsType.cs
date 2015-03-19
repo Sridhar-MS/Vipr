@@ -6,38 +6,30 @@ using System.Threading.Tasks;
 
 namespace Vipr.Core.CodeModel.Vocabularies.Capabilities
 {
-    /*      <Term Name="UpdateRestrictions" Type="Capabilities.UpdateRestrictionsType" AppliesTo="EntitySet">
-        <Annotation Term="Core.Description" String="Restrictions on update operations" />
-      </Term>
-      <ComplexType Name="UpdateRestrictionsType">
-        <Property Name="Updatable" Type="Edm.Boolean" DefaultValue="true">
-          <Annotation Term="Core.Description" String="Entities can be updated" />
-        </Property>
-        <Property Name="NonUpdatableNavigationProperties" Type="Collection(Edm.NavigationPropertyPath)">
-          <Annotation Term="Core.Description" String="These navigation properties do not allow rebinding" />
-        </Property>
-      </ComplexType>
-*/
-
     /// <summary>
     /// Restrictions on update operations
     /// </summary>
-    public class UpdateRestrictionsType
+    public class OdcmUpdateCapability : OdcmCapability
     {
         /// <summary>
         /// Entities can be updated
         /// </summary>
         public bool Updatable { get; set; }
 
-        /// <summary>
-        /// These navigation properties do not allow rebinding
-        /// </summary>
-        public List<string> NonUpdatableNavigationProperties { get; set; }
-
-        public UpdateRestrictionsType()
+        public OdcmUpdateCapability()
         {
             Updatable = true;
-            NonUpdatableNavigationProperties = new List<string>();
+        }
+
+        public override bool Equals(OdcmCapability otherCapability)
+        {
+            var other = otherCapability as OdcmUpdateCapability;
+            if (other == null)
+            {
+                return false;
+            }
+
+            return Updatable == other.Updatable;
         }
     }
 }

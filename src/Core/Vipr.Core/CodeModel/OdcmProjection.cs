@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Vipr.Core.CodeModel.Vocabularies;
+using Vipr.Core.CodeModel.Vocabularies.Capabilities;
 
 namespace Vipr.Core.CodeModel
 {
@@ -11,15 +12,6 @@ namespace Vipr.Core.CodeModel
     {
         public OdcmType Type { get; set; }
 
-        public OdcmCapabilities Capabilities { get; set; }
-
-        public OdcmCapabilities EnsureCapabilities()
-        {
-            if (Capabilities == null)
-            {
-                Capabilities = new OdcmCapabilities();
-            }
-            return Capabilities;
-        }
+        public List<OdcmCapability> Capabilities { get; set; }
     }
 }

@@ -14,40 +14,185 @@ using System.Text;
 using System.Xml;
 using Vipr.Core;
 using Vipr.Core.CodeModel;
+using Vipr.Core.CodeModel.Vocabularies.Capabilities;
 
 namespace ODataReader.v4
 {
-    internal static class ODataCapabilitiesReader
+    internal class ODataCapabilitiesReader
     {
-        private static IEdmModel s_capabilitiesModel;
-        private static readonly IEdmValueTerm s_insertRestrictionsTerm;
-        private static readonly IEdmValueTerm s_updateRestrictionsTerm;
-        private static readonly IEdmValueTerm s_deleteRestrictionsTerm;
-        private static readonly IEdmValueTerm s_expandRestrictionsTerm;
-
+        private IEdmModel _capabilitiesModel;
+        private IEdmModel _serviceModel;
+        
         const string CapabilitiesInsertRestrictions = "Org.OData.Capabilities.V1.InsertRestrictions";
         const string CapabilitiesUpdateRestrictions = "Org.OData.Capabilities.V1.UpdateRestrictions";
         const string CapabilitiesDeleteRestrictions = "Org.OData.Capabilities.V1.DeleteRestrictions";
         const string CapabilitiesExpandRestrictions = "Org.OData.Capabilities.V1.ExpandRestrictions";
+
+        protected Dictionary<IEdmValueTerm, EntitySetAnnotationParser> WellKnownRestrictionTerms;
+
+        protected delegate void EntitySetAnnotationParser(OdcmProperty odcmEntitySet, IEdmValueAnnotation annotation);
+
+        protected Dictionary<OdcmProperty, List<OdcmCapability>> PropertyCache =
+                new Dictionary<OdcmProperty, List<OdcmCapability>>();
         
-        static ODataCapabilitiesReader()
+        public ODataCapabilitiesReader(IEdmModel serviceModel)
         {
             using(var reader = new StringReader(Properties.Resources.CapabilitiesVocabularies))
             {
                 IEnumerable<EdmError> errors;
-                if (!CsdlReader.TryParse(new[] { XmlReader.Create(reader) }, out s_capabilitiesModel, out errors))
+                if (!CsdlReader.TryParse(new[] { XmlReader.Create(reader) }, out _capabilitiesModel, out errors))
                 {
                     throw new InvalidOperationException("Could not load capabilities vocabulary from resources");
                 }
             }
 
-            s_insertRestrictionsTerm = s_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesInsertRestrictions);
-            s_updateRestrictionsTerm = s_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesUpdateRestrictions);
-            s_deleteRestrictionsTerm = s_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesDeleteRestrictions);
-            s_expandRestrictionsTerm = s_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesExpandRestrictions);
+            _serviceModel = serviceModel;
+            WellKnownRestrictionTerms = new Dictionary<IEdmValueTerm, EntitySetAnnotationParser>()
+            {
+                {_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesInsertRestrictions), SetCapabilitiesForEntitySetAndNavigationProperties},
+                {_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesUpdateRestrictions), SetCapabilitiesForEntitySetAndNavigationProperties},
+                {_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesDeleteRestrictions), SetCapabilitiesForEntitySetAndNavigationProperties},
+                {_capabilitiesModel.FindDeclaredValueTerm(CapabilitiesExpandRestrictions), SetCapabilitiesForEntitySetAndNavigationProperties},
+            };
         }
 
-        internal static void GetCapabilitiesForEntitySet(OdcmProperty odcmProperty, IEdmModel edmModel, IEdmEntitySet entitySet)
+        protected void CreateProjectionsForProperties()
+        {
+            foreach (var propertyPair in PropertyCache)
+            {
+                var property = propertyPair.Key;
+                var capabilities = propertyPair.Value;
+                var propertyType = property.Projection.Type;
+                property.Projection = propertyType.GetProjection(capabilities);
+            }
+        }
+
+        public virtual void SetCapabilitiesForEntityContainer(OdcmServiceClass odcmServiceClass, IEdmEntityContainer edmEntityContainer)
+        {
+            //TODO: Add Capability Annotation support for EntityContainers
+        }
+
+        public virtual void SetCapabilitiesForEntitySet(OdcmProperty odcmEntitySet, IEdmEntitySet edmEntitySet)
+        {
+            if (odcmEntitySet == null) throw new ArgumentNullException("odcmEntitySet");
+            if (edmEntitySet == null) throw new ArgumentNullException("edmEntitySet");
+            
+            foreach (var restriction in WellKnownRestrictionTerms.Keys)
+            {
+                IEdmValueAnnotation annotation = FindVocabularyAnnotation(edmEntitySet, restriction);
+                if (annotation != null)
+                {
+                    WellKnownRestrictionTerms[restriction](odcmEntitySet, annotation);
+                }
+            }
+
+            CreateProjectionsForProperties();
+        }
+
+        private void SetCapabilitiesForEntitySetAndNavigationProperties(OdcmProperty odcmEntitySet, IEdmValueAnnotation annotation)
+        {
+            var recordExpression = (IEdmRecordExpression)annotation.Value;
+            var boolVal = GetBooleanValue(recordExpression);
+            List<OdcmProperty> navigationProperties = GetNavigationProperties(recordExpression,
+                odcmEntitySet.Type as OdcmClass);
+
+            List<OdcmCapability> capabilities;
+            if (!PropertyCache.TryGetValue(odcmEntitySet, out capabilities))
+            {
+                capabilities = new List<OdcmCapability>();
+                PropertyCache.Add(odcmEntitySet, capabilities);
+            }
+
+            capabilities.Add(GetBooleanCapabiltity(boolVal, annotation.Term.FullName()));
+
+            foreach (var navigationProperty in navigationProperties)
+            {
+                if (!PropertyCache.TryGetValue(navigationProperty, out capabilities))
+                {
+                    capabilities = new List<OdcmCapability>();
+                    PropertyCache.Add(navigationProperty, capabilities);
+                }
+
+                capabilities.Add(GetBooleanCapabiltity(false, annotation.Term.FullName()));
+            }
+        }
+
+        private OdcmCapability GetBooleanCapabiltity(bool boolVal, string restriction)
+        {
+            OdcmCapability capability = null;
+            Type capabilityType = null;
+            switch (restriction)
+            {
+                case CapabilitiesInsertRestrictions:
+                    capabilityType = typeof(OdcmInsertCapability);
+                    break;
+                case CapabilitiesUpdateRestrictions:
+                    capabilityType = typeof(OdcmUpdateCapability);
+                    break;
+                case CapabilitiesDeleteRestrictions:
+                    capabilityType = typeof(OdcmDeleteCapability);
+                    break;
+                case CapabilitiesExpandRestrictions:
+                    capabilityType = typeof(OdcmExpandCapability);
+                    break;
+            }
+
+            if (capabilityType != null)
+            {
+                capability = (OdcmCapability)Activator.CreateInstance(capabilityType);
+                var booleanProperty = capabilityType.GetProperties().Single(p => p.PropertyType == typeof(bool));
+                booleanProperty.SetValue(capability, boolVal);
+            }
+
+            return capability;
+        }
+
+        private bool GetBooleanValue(IEdmRecordExpression recordExpression)
+        {
+            var booleanExpression = (IEdmBooleanConstantExpression)recordExpression.Properties.Single(p => p.Value is IEdmBooleanConstantExpression).Value;
+            return booleanExpression.Value;
+        }
+
+        private List<OdcmProperty> GetNavigationProperties(IEdmRecordExpression recordExpression, OdcmClass containerClass)
+        {
+            var properties = new List<OdcmProperty>();
+            var collectionExpression = (IEdmCollectionExpression)recordExpression.Properties.Single(p => p.Value is IEdmCollectionExpression).Value;
+            foreach (IEdmPathExpression pathExpression in collectionExpression.Elements)
+            {
+                var pathBuilder = new StringBuilder();
+                foreach (var path in pathExpression.Path)
+                {
+                    pathBuilder.AppendFormat("{0}.", path);
+                }
+
+                pathBuilder.Remove(pathBuilder.Length - 1, 1);
+
+                OdcmProperty navProperty;
+                if (!containerClass.TryFindProperty(pathBuilder.ToString(), out navProperty))
+                {
+                    throw new InvalidOperationException();
+                }
+                properties.Add(navProperty);
+            }
+
+            return properties;
+        }
+
+        private IEdmValueAnnotation FindVocabularyAnnotation(IEdmVocabularyAnnotatable target, IEdmValueTerm term)
+        {
+            var result = default(IEdmValueAnnotation);
+
+            var annotations = _serviceModel.FindVocabularyAnnotations(target);
+            if (annotations != null)
+            {
+                var annotation = annotations.FirstOrDefault(a => a.Term.Namespace == term.Namespace && a.Term.Name == term.Name);
+                result = (IEdmValueAnnotation)annotation;
+            }
+
+            return result;
+        }
+
+        /*internal static void GetCapabilitiesForEntitySet(OdcmProperty odcmProperty, IEdmModel edmModel, IEdmEntitySet entitySet)
         {
             if (odcmProperty == null) throw new ArgumentNullException("odcmProperty");
             if (edmModel == null) throw new ArgumentNullException("edmModel");
@@ -191,6 +336,6 @@ namespace ODataReader.v4
             }
 
             return result;
-        }
+        }*/
     }
 }

@@ -227,7 +227,10 @@
       </EnumType>
       <Action Name="PatchContent" IsBound="true">
         <Parameter Name="bindingParameter" Type="Microsoft.OneNote.Api.Page" />
-        <Parameter Name="commands" Type="Collection(Microsoft.OneNote.Api.PatchContentCommand)" />
+        <Parameter Name="commands" Type="Collection(Microsoft.OneNote.Api.PatchContentCommand)">
+          <Annotation Term="Org.OData.Core.V1.Description" String="List of commands to be executed for patching the page" />
+        </Parameter>
+        <Annotation Term="Org.OData.Core.V1.Description" String="Patch content of a Page in a notebook" />
       </Action>
       <EntityContainer Name="OneNoteApi">
         <EntitySet Name="notebooks" EntityType="Microsoft.OneNote.Api.Notebook">

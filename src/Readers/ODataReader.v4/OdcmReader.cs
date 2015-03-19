@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Xml.Linq;
+using Vipr.Core.CodeModel.Vocabularies.Capabilities;
 
 namespace ODataReader.v4
 {
@@ -67,6 +68,7 @@ namespace ODataReader.v4
 
             private IEdmModel _edmModel = null;
             private OdcmModel _odcmModel;
+            private ODataCapabilitiesReader _capabilitiesReader;
 
             public OdcmModel GenerateOdcmModel(TextFileCollection serviceMetadata)
             {
@@ -96,6 +98,7 @@ namespace ODataReader.v4
                 }
 
                 _odcmModel = new OdcmModel(serviceMetadata);
+                _capabilitiesReader = new ODataCapabilitiesReader(_edmModel);
 
                 AddPrimitives();
 
@@ -114,13 +117,13 @@ namespace ODataReader.v4
 
             private void AddVocabularyAnnotations(OdcmObject odcmObject, IEdmVocabularyAnnotatable annotatableEdmEntity)
             {
-                odcmObject.Annotations = ODataVocabularyReader.GetOdcmAnnotations(_edmModel, annotatableEdmEntity).ToList();
+                //odcmObject.Annotations = ODataVocabularyReader.GetOdcmAnnotations(_edmModel, annotatableEdmEntity).ToList();
                 odcmObject.Description = _edmModel.GetDescriptionAnnotation(annotatableEdmEntity);
                 odcmObject.LongDescription = _edmModel.GetLongDescriptionAnnotation(annotatableEdmEntity);
 
                 if(annotatableEdmEntity is IEdmEntitySet && odcmObject is OdcmProperty)
                 {
-                    ODataCapabilitiesReader.GetCapabilitiesForEntitySet((OdcmProperty)odcmObject, _edmModel, (IEdmEntitySet)annotatableEdmEntity);
+                    _capabilitiesReader.SetCapabilitiesForEntitySet((OdcmProperty)odcmObject, (IEdmEntitySet)annotatableEdmEntity);
                 }
             }
 
@@ -407,15 +410,12 @@ namespace ODataReader.v4
 
             private void WriteProperty(OdcmClass odcmClass, IEdmEntitySet entitySet)
             {
+                var odcmType = ResolveType(entitySet.EntityType().Name, entitySet.EntityType().Namespace);
                 var odcmProperty = new OdcmProperty(entitySet.Name)
                 {
                     Class = odcmClass,
                     Type = ResolveType(entitySet.EntityType().Name, entitySet.EntityType().Namespace),
-                    Projection = new OdcmProjection()
-                    {
-                        Type = ResolveType(entitySet.EntityType().Name, entitySet.EntityType().Namespace),
-                        Capabilities = null
-                    },
+                    Projection = odcmType.GetProjection(new List<OdcmCapability>()),
                     IsCollection = true,
                     IsLink = true
                 };
@@ -427,15 +427,12 @@ namespace ODataReader.v4
 
             private void WriteProperty(OdcmClass odcmClass, IEdmSingleton singleton)
             {
+                var odcmType = ResolveType(singleton.EntityType().Name, singleton.EntityType().Namespace);
                 var odcmProperty = new OdcmProperty(singleton.Name)
                 {
                     Class = odcmClass,
                     Type = ResolveType(singleton.EntityType().Name, singleton.EntityType().Namespace),
-                    Projection = new OdcmProjection()
-                    {
-                        Type = ResolveType(singleton.EntityType().Name, singleton.EntityType().Namespace),
-                        Capabilities = null
-                    },
+                    Projection = odcmType.GetProjection(new List<OdcmCapability>()),
                     IsLink = true
                 };
 
@@ -500,16 +497,13 @@ namespace ODataReader.v4
 
             private void WriteProperty(OdcmClass odcmClass, IEdmProperty property)
             {
+                var odcmType = ResolveType(property.Type);
                 var odcmProperty = new OdcmProperty(property.Name)
                 {
                     Class = odcmClass,
                     IsNullable = property.Type.IsNullable,
                     Type = ResolveType(property.Type),
-                    Projection = new OdcmProjection()
-                    {
-                        Type = ResolveType(property.Type),
-                        Capabilities = null
-                    },
+                    Projection = odcmType.GetProjection(new List<OdcmCapability>()),
                     IsCollection = property.Type.IsCollection(),
                     ContainsTarget =
                         property is IEdmNavigationProperty && ((IEdmNavigationProperty)property).ContainsTarget,
